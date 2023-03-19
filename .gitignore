@@ -134,3 +134,5 @@ dmypy.json
 .ipynb_checkpoints
 __pycache__
 slides
+eda_fe_summary
+data_science_udacity
