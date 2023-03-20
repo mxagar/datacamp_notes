@@ -218,7 +218,6 @@ while True:
 File [`mqtt_subscribe.py`](./lab/mqtt_subscribe.py): Note that we can either (1) create a client which runs in a `loop` or (2) create a `callback`. For both cases, a function `on_message()` needs to be defined. This script reads the messages sent by the other two to the topic `/mqtt/test/temperature` hosted in the specified public broker.
 
 ```python
-
 import time
 import paho.mqtt.client as mqtt
 import paho.mqtt.subscribe as subscribe
