@@ -22,6 +22,9 @@ No guarantees.
     - [1.3 Introduction to Data Streams with MQTT](#13-introduction-to-data-streams-with-mqtt)
       - [Example: Publisher \& Subscriber via Test Mosquitto Broker](#example-publisher--subscriber-via-test-mosquitto-broker)
   - [2. Processing IoT Data](#2-processing-iot-data)
+    - [2.1 Basic EDA and Cleaning: Temporal Plots and Histograms](#21-basic-eda-and-cleaning-temporal-plots-and-histograms)
+    - [2.2 Missing Data](#22-missing-data)
+    - [2.3 Gather Minimalistic Incremental Data](#23-gather-minimalistic-incremental-data)
 
 ## 0. Setup
 
@@ -266,4 +269,114 @@ if not client:
 ```
 
 ## 2. Processing IoT Data
+
+The code shown in this section is located in [`lab/02_Process_IoT_Data.ipynb`](./lab/02_Process_IoT_Data.ipynb).
+
+### 2.1 Basic EDA and Cleaning: Temporal Plots and Histograms
+
+```python
+import pandas as pd
+import matplotlib.pyplot as plt
+
+DATA_PATH = "../data/"
+filename = "environ_MS83200MS_nowind_3m-10min.json"
+
+df = pd.read_json(DATA_PATH+filename)
+
+df.head()
+df.info()
+
+# Measure missing values: 50% of some column rows are NA
+df.isna().sum()/df.shape[0]
+
+# Create a line/temporal plot
+# If we drop the NAs, but the temporal distances are not the same
+# We can instead fill the NAs: ffill = hold last sample forward, bfill = back fill
+#df[cols].dropna().plot(title="Environmental data", x="timestamp")
+cols = ["temperature", "humidity", "pressure", "timestamp"]
+df[cols].fillna(method='ffill').plot(title="Environmental data", x="timestamp")
+# Label X-Axis
+plt.xlabel("Time")
+
+# Plot with 2 axes: curves are set together
+df[cols].fillna(method='ffill').plot(title="Environmental data", secondary_y="pressure", x="timestamp")
+# Label X-Axis
+plt.xlabel("Time")
+
+# Create a histogram
+cols = ["temperature", "humidity", "pressure", "radiation"]
+df[cols].hist(bins=30, figsize=(10,10))
+plt.ylabel("Frequency")
+
+```
+
+### 2.2 Missing Data
+
+We can deal with missing data as follows:
+
+- `dropna()`: drop, if few rows.
+- `fillna(method='ffill')`: forward/backward fill, if few rows.
+
+In any case, we need to measure the amount of NAs: `df.isna().sum()`.
+
+Additionally, we need to check whether there is a longer connected period in which we don't have data; we can do that with `resample()`.
+
+```python
+# To use resample, the index needs to be a datetime column
+df.set_index("timestamp", inplace=True)
+
+# Calculate and print the sum of NA values
+print(df.isna().sum())
+
+# Resample data
+df_res = df.resample("10min").last()
+
+# Calculate and print NA count
+# Temperature seems to have a larger amount of NAs, but it's OK
+print(df_res.isna().sum())
+
+# Plot to visualize if there is any gap
+df_res[['pressure', 'temperature']].plot(title="Environment")
+```
+
+### 2.3 Gather Minimalistic Incremental Data
+
+Since we are working with data streams, it is not possible to keep all the data in memory. Because of that, we do **caching**: we store the incoming messages in a cache and save it to disk when a size is reached.
+
+Additionally, it is fundamental to save the timestamp of each message; the timestamp should be as close as possible to the measurement instant. If the message/mesaurement has no timestamp, we can use the publish timestamp, prvided by `mqtt`.
+
+Sometimes the timestamps are ini Unix time. Pandas can reparse them with `to_datetime`.
+
+```python
+import datetime
+import pandas as pd
+import paho.mqtt.subscribe as subscribe
+
+cache = []
+MAX_CACHE = 256
+def on_message(client, userdata, message):
+    data = json.loads(message.payload)
+    # If data has no timestamp, save the publish time from mqtt
+    publish_time = message.timestamp
+    consume_time = datetime.utcnow()
+    data['timestamp'] = publish_time
+    data['consume_time'] = publish_time    
+    cache.append(data)
+    if len(cache) > MAX_CACHE:
+        # Open file in append mode!
+        with open('data.txt', 'a') as f:
+            f.writelines(cache)
+           # Reset cache
+        cache.clear()
+        
+# Connect function to mqtt datastream
+subscribe.callback(on_message,
+                   topics="datacamp/energy",
+                   hostname=MQTT_HOST)
+
+# Translate timestamp from Unix/other format to datetime
+df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+```
+
+
 
