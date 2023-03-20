@@ -27,6 +27,10 @@ No guarantees.
     - [2.3 Gather Minimalistic Incremental Data](#23-gather-minimalistic-incremental-data)
     - [2.4 Prepare and Visualize Incremental Data: Pivoting and Diff](#24-prepare-and-visualize-incremental-data-pivoting-and-diff)
   - [3. Analyzing IoT Data](#3-analyzing-iot-data)
+    - [3.1 Combining Datasources for Further Analysis](#31-combining-datasources-for-further-analysis)
+      - [Example: Combine and Resample](#example-combine-and-resample)
+    - [3.2 Correlation](#32-correlation)
+    - [3.3 Outliers](#33-outliers)
 
 ## 0. Setup
 
@@ -409,4 +413,113 @@ df_pct.plot()
 ```
 
 ## 3. Analyzing IoT Data
+
+The code shown in this section is located in [`lab/02_Process_IoT_Data.ipynb`](./lab/02_Process_IoT_Data.ipynb).
+
+### 3.1 Combining Datasources for Further Analysis
+
+It is common to get to datasets with a time series of a measurement. We can merge them with `concat`:
+
+```python
+import pandas as pd
+
+# axis = 1 concatenates columns one next to the other,
+# axis = 0 would append rows one after the other
+environ = pd.concat([temp, sun], axis=1)
+```
+
+Since that might introoduce many NA values, we can resample it. Note that we can use different aggregated functions for each column:
+
+```python
+
+# It makes sense to pick the maximum temp in a bin
+# and the sum of radiation in the bin
+agg_dict = {"temperature": "max", "sunshine": "sum"}
+env1h = environ.resample("1h").agg(agg_dict)
+
+# Another option is to fill the NAs with the last sample
+env30min = environ.fillna(method="ffill")
+```
+
+#### Example: Combine and Resample
+
+```python
+import pandas as pd
+import matplotlib.pyplot as plt
+
+DATA_PATH = "../data/"
+filename_light = "traffic_raw_siemens_light-veh.json"
+filename_heavy = "traffic_raw_siemens_heavy-veh.json"
+filename_environ = "environ_MS83200MS_nowind_3m-10min.json"
+
+# Number of heavy vehicles like lorries or busses per hour on a road of a small city.
+# Frequency: every 15 mins
+light_veh = pd.read_json(DATA_PATH+filename_light)
+
+# 8732 entries
+light_veh.shape # (8732, 2)
+
+light_veh.set_index('timestamp', inplace=True)
+light_veh.columns = ['light_veh']
+
+# Number of light vehicles, like automobiles or motorbikes per hour on that road.
+# Frequency: every 15 mins
+heavy_veh = pd.read_json(DATA_PATH+filename_heavy)
+
+# 8732 entries, same as light_veh
+heavy_veh.shape # (8732, 2)
+
+heavy_veh.set_index('timestamp', inplace=True)
+heavy_veh.columns = ['heavy_veh']
+
+traffic = pd.concat([light_veh, heavy_veh], axis=1)
+
+# Environmental data: precipitation, humidity, radiation, sunshine, pressure, temperature
+# Frequency: every 5 mins
+environ = pd.read_json(DATA_PATH+filename_environ)
+
+environ.shape # (26175, 7)
+
+environ.set_index('timestamp', inplace=True)
+environ_traffic = pd.concat([environ, traffic], axis=1)
+
+# There are many NAs because of the miss-match in the timestamp & frequency
+environ_traffic.head()
+
+# Create agg logic
+agg_dict = {"temperature": "max", 
+            "humidity": "max",
+            "sunshine": "sum",
+            "light_veh": "sum",
+            "heavy_veh": "sum",
+            }
+
+# Resample the DataFrame 
+environ_traffic_resampled = environ_traffic.resample("1h").agg(agg_dict)
+# timestamp           temperature	humidity	sunshine	light_veh	heavy_veh
+# 2018-09-01 00:00:00	16.1	      95.6	    3596.6	  0.0	      0.0
+# ...
+```
+
+### 3.2 Correlation
+
+Always check correlations with `sns.heatmap()` and `sns.pairplot()`. If two variables are very correlated, think of (1) merging them or (2) removing one. In this case, the number of heaviy and light vehicles are correlated. 
+
+```python
+import seaborn as sns
+
+df = environ_traffic_resampled.copy()
+
+# Always check correlations with heatmap and pairplot
+# If two variables are very correlated, think of
+# (1) merging them or (2) removing one
+# In this case, tghe number of heaviy and light vehicles
+# are correlated
+sns.heatmap(df.corr(), annot=True)
+
+sns.pairplot(df)
+
+```
+
+### 3.3 Outliers
 
