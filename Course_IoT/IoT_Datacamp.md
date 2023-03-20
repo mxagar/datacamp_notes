@@ -25,6 +25,8 @@ No guarantees.
     - [2.1 Basic EDA and Cleaning: Temporal Plots and Histograms](#21-basic-eda-and-cleaning-temporal-plots-and-histograms)
     - [2.2 Missing Data](#22-missing-data)
     - [2.3 Gather Minimalistic Incremental Data](#23-gather-minimalistic-incremental-data)
+    - [2.4 Prepare and Visualize Incremental Data: Pivoting and Diff](#24-prepare-and-visualize-incremental-data-pivoting-and-diff)
+  - [3. Analyzing IoT Data](#3-analyzing-iot-data)
 
 ## 0. Setup
 
@@ -378,5 +380,33 @@ subscribe.callback(on_message,
 df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
 ```
 
+### 2.4 Prepare and Visualize Incremental Data: Pivoting and Diff
 
+Since we can have different devices publishing to a topic, we might get a dataset with values measured by each device. It is difficult to interpret that; instead, we can pivot the dataframe to have a column for each device:
+
+```python
+data.head()
+# timestamp device value
+
+data = pd.pivot_table(data, columns="device", values="value", index="timestamp")
+# timestamp device-1 device-2
+
+# That will introduce many NAs, because the timestamps don't coincide
+# To address that, we can resample DataFrame to 1min and take the max in the bin
+df = data.resample("1min").max().dropna()
+```
+
+![Pivoting](./pics/pivot.jpg)
+
+When the data is incremental, it makes sense to plot it with `diff()` and `pct_change()` to check the differences from timestamp to timestamp.
+
+```python
+df_diff = data.diff(1)
+df_diff.plot()
+
+df_pct = df_diff.pct_change()
+df_pct.plot()
+```
+
+## 3. Analyzing IoT Data
 
