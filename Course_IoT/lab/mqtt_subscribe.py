@@ -7,7 +7,13 @@ import paho.mqtt.subscribe as subscribe
 # even if they are not used!
 def on_message(client, userdata, message):
     # We simple print the message content here = message.payload
+    # We can also access the topic name via message.topic
     print(f"Received message: {str(message.payload.decode('utf-8'))}")
+    # To parse a JSON: data = json.loads(message.payload)
+    # Then we would store it: store.append(data)
+    # And finally as a dataframe outside from on_message:
+    # df = pd.DataFrame(store)
+    # df.to_csv("datastream.csv", index=False)
 
 # Public broker: remove https://www.
 #mqttBroker = "test.mosquitto.org"

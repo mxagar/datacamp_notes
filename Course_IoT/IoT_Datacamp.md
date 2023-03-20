@@ -21,6 +21,7 @@ No guarantees.
     - [1.2 Understanding the Data](#12-understanding-the-data)
     - [1.3 Introduction to Data Streams with MQTT](#13-introduction-to-data-streams-with-mqtt)
       - [Example: Publisher \& Subscriber via Test Mosquitto Broker](#example-publisher--subscriber-via-test-mosquitto-broker)
+  - [2. Processing IoT Data](#2-processing-iot-data)
 
 ## 0. Setup
 
@@ -226,7 +227,13 @@ import paho.mqtt.subscribe as subscribe
 # even if they are not used!
 def on_message(client, userdata, message):
     # We simple print the message content here = message.payload
+    # We can also access the topic name via message.topic
     print(f"Received message: {str(message.payload.decode('utf-8'))}")
+    # To parse a JSON: data = json.loads(message.payload)
+    # Then we would store it: store.append(data)
+    # And finally as a dataframe outside from on_message:
+    # df = pd.DataFrame(store)
+    # df.to_csv("datastream.csv", index=False)
 
 # Public broker: remove https://www.
 #mqttBroker = "test.mosquitto.org"
@@ -257,3 +264,6 @@ if not client:
                        hostname=mqttBroker)
 
 ```
+
+## 2. Processing IoT Data
+
