@@ -37,6 +37,7 @@ No guarantees.
   - [4. Machine Learning for IoT Data](#4-machine-learning-for-iot-data)
     - [4.1 Basic Model Training: Split, Scale, Train, Evaluate](#41-basic-model-training-split-scale-train-evaluate)
     - [4.2 Develop Machine Learning Pipeline](#42-develop-machine-learning-pipeline)
+    - [4.3 Apply the Trained Machine Learning Model to New Data](#43-apply-the-trained-machine-learning-model-to-new-data)
 
 ## 0. Setup
 
@@ -754,3 +755,63 @@ print(logreg.score(X_test_s, y_test))
 
 ### 4.2 Develop Machine Learning Pipeline
 
+```python
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import Pipeline
+
+# Initialize Objects
+sc = StandardScaler()
+logreg = LogisticRegression()
+# Create pipeline
+pl = Pipeline([
+        ("scale", sc),
+        ("logreg", logreg)
+    ])
+
+
+# Train and predict
+pl.fit(X_train, y_train)
+print(pl.predict(X_test))
+
+# Persisting th emodel
+import pickle
+
+with Path("pipeline_model.pkl").open("bw") as f:
+    pickle.dump(pl, f)
+
+with Path("pipeline_model.pkl").open('br') as f:
+    pl = pickle.load(f)
+
+```
+
+### 4.3 Apply the Trained Machine Learning Model to New Data
+
+The following snippet shows how to apply the ML model to the data stream. The steps are:
+
+- Get the message with `on_message()` using a callback.
+- Extract the record and convert it to a dataframe with a single row.
+- Predict the target with the dataframe.
+- Pass the result to the function that should do something with it.
+
+```python
+def on_message(client, userdata, message):
+    # Extract data: single JSON record
+    data = json.loads(message.payload)
+    # {'timestamp': '2018-11-30 18:15:00',
+    #  'humidity': 81.7,
+    #  'pressure': 1019.8,
+    #  'temperature': 1.5}
+    # Create 
+    df = pd.DataFrame.from_records([data],
+                                   index="timestamp",
+                                   columns=cols)
+    # Predict
+    category = pl.predict(df)
+    # Pass prediction to function
+    # Since the input is an array of 1 entry, the output, too!
+    maybe_alert(category[0])
+
+# Subscribe to topic
+subscribe.callback(on_message, topic, hostname=MQTT_HOST)
+```
