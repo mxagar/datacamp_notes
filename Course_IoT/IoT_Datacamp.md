@@ -30,7 +30,11 @@ No guarantees.
     - [3.1 Combining Datasources for Further Analysis](#31-combining-datasources-for-further-analysis)
       - [Example: Combine and Resample](#example-combine-and-resample)
     - [3.2 Correlation](#32-correlation)
-    - [3.3 Outliers](#33-outliers)
+    - [3.3 Outliers and Autocorrelation](#33-outliers-and-autocorrelation)
+      - [Example: Normal Bands and Autocorrelation](#example-normal-bands-and-autocorrelation)
+    - [3.4 Seasonality and Trends](#34-seasonality-and-trends)
+      - [Example: Trend and Seasonality of the Temperature](#example-trend-and-seasonality-of-the-temperature)
+  - [4. Machine Learning for IoT Data](#4-machine-learning-for-iot-data)
 
 ## 0. Setup
 
@@ -521,5 +525,160 @@ sns.pairplot(df)
 
 ```
 
-### 3.3 Outliers
+### 3.3 Outliers and Autocorrelation
+
+Causes of outliers in IoT data:
+
+- Measurement errors
+- Manipulation (sensor publicly available)
+- Extreme events
+
+In general an outlier is considered any value outside from the range `[mean-3*std, mean+3*std]`. We can plot that as follows:
+
+```python
+temp_mean = data["temperature"].mean()
+temp_std = data["temperature"].std()
+
+# Columns with constant values
+data["mean"] = temp_mean
+data["upper_limit"] = temp_mean + (temp_std * 3)
+data["lower_limit"] = temp_mean - (temp_std * 3)
+
+print(data.iloc[0]["upper_limit"])
+print(data.iloc[0]["mean"])
+print(data.iloc[0]["lower_limit"])
+
+data.plot()
+```
+
+Autocorrelation is a powerful technique to discover repeating patterns in a time series. Autocorrelation is the correlation of a time series with a delayed version of itself.
+
+We define a `lag` value: that means how many time steps is shifted the time series. For each step, the correlation of the original time series with the shifted is computed.
+
+The result is a plot with:
+
+- A shaded area, which is the confidence interval (CI)
+- Correlation values `[-1,1]`
+
+Any correlation value outside from the CI is statistically significant.
+
+Notes:
+
+- Usually, at the beginning we have high correlations, which then decrease; that's because we have shifted few steps, so the curves are still similar.
+- If the time series is periodic, we'll get a maximum at some point, say `step/lag = 24`. That means the time series repeats after 24 steps, e.g., every 24h, if the frequency is hourly.
+
+![Autocorrelation](./pics/autocorrelation_plot.jpg)
+
+```python
+from statsmodels.graphics import tsaplots
+
+# Autocorrelation
+tsaplots.plot_acf(data['temperature'], lags=50)
+```
+
+#### Example: Normal Bands and Autocorrelation
+
+```python
+from statsmodels.graphics import tsaplots
+
+# Continuing with dataset from last example...
+vehicle = environ_traffic_resampled["light_veh"] + environ_traffic_resampled["heavy_veh"]
+vehicle = vehicle.to_frame()
+vehicle.columns = ["vehicles"]
+
+# Plot traffic dataset
+vehicle[:"2018-11-10"].plot(figsize=(10,10))
+
+# Show plot
+plt.show()
+
+vec_mean = vehicle.vehicles.mean()
+vec_std = vehicle.vehicles.std()
+
+# Columns with constant values
+vehicle["mean"] = vec_mean
+vehicle["upper_limit"] = vec_mean + (vec_std * 3)
+vehicle["lower_limit"] = vec_mean - (vec_std * 3)
+
+print(vehicle.iloc[0]["upper_limit"])
+print(vehicle.iloc[0]["mean"])
+print(vehicle.iloc[0]["lower_limit"])
+# 691.3693496060293
+# 198.54395604395606
+# -294.2814375181172
+
+# Periodic time series with upper/lower bands
+vehicle.plot()
+
+# Autocorrelation plot
+# The time series repeats after 24 lags/steps
+tsaplots.plot_acf(vehicle['vehicles'], lags=50)
+```
+
+### 3.4 Seasonality and Trends
+
+We can decompose a time series in 3 components:
+
+```
+series[t] = trend[t] + seasonal[t] + residual[t]
+```
+
+- Trend: whether the curve increases/decreases in general
+- Seasonal component: periodically repeating component
+- Residual/noise: unexplained variation
+
+```python
+import statsmodels.api as sm
+
+## Run seasonal decomposition and plot
+
+# decomp has now all the 3 components
+decomp = sm.tsa.seasonal_decompose(data["temperature"])
+
+# Print seasonal component
+print(decomp.seasonal.head())
+
+# Plot all components in different axes
+decomp.plot()
+
+## Combined plot
+
+# Timeseries
+plt.plot(data["temperature"], label="temperature")
+decomp = sm.tsa.seasonal_decompose(data["temperature"])
+
+# Plot trend and seasonality
+plt.plot(decomp.trend, label="trend")
+plt.plot(decomp.seasonal, label="seasonal")
+plt.show()
+```
+
+#### Example: Trend and Seasonality of the Temperature
+
+```python
+import statsmodels.api as sm
+
+# Take the velue we're interested in, fill missing, convert to dataframe
+df = environ_traffic_resampled['temperature'].fillna(method='ffill').to_frame()
+df.columns = ['temperature']
+
+# Check that there are no missing values
+df.isna().sum()
+
+# Run seasonal decompose
+decomp = sm.tsa.seasonal_decompose(df)
+
+# Plot the timeseries
+plt.figure(figsize=(10,10))
+plt.title("Temperature")
+plt.plot(df["temperature"], label="temperature")
+
+# Plot trend and seasonality
+plt.plot(decomp.trend, label="trend")
+plt.plot(decomp.seasonal, label="seasonal")
+plt.legend()
+plt.show()
+```
+
+## 4. Machine Learning for IoT Data
 
