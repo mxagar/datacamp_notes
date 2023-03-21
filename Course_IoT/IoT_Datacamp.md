@@ -35,6 +35,8 @@ No guarantees.
     - [3.4 Seasonality and Trends](#34-seasonality-and-trends)
       - [Example: Trend and Seasonality of the Temperature](#example-trend-and-seasonality-of-the-temperature)
   - [4. Machine Learning for IoT Data](#4-machine-learning-for-iot-data)
+    - [4.1 Basic Model Training: Split, Scale, Train, Evaluate](#41-basic-model-training-split-scale-train-evaluate)
+    - [4.2 Develop Machine Learning Pipeline](#42-develop-machine-learning-pipeline)
 
 ## 0. Setup
 
@@ -418,7 +420,7 @@ df_pct.plot()
 
 ## 3. Analyzing IoT Data
 
-The code shown in this section is located in [`lab/02_Process_IoT_Data.ipynb`](./lab/02_Process_IoT_Data.ipynb).
+The code shown in this section is located in [`lab/03_Analyze_IoT_Data.ipynb`](./lab/03_Analyze_IoT_Data.ipynb).
 
 ### 3.1 Combining Datasources for Further Analysis
 
@@ -681,4 +683,74 @@ plt.show()
 ```
 
 ## 4. Machine Learning for IoT Data
+
+The code shown in this section is located in [`lab/04_MachineLearning_IoT.ipynb`](./lab/04_MachineLearning_IoT.ipynb).
+
+### 4.1 Basic Model Training: Split, Scale, Train, Evaluate
+
+Supervised machine learning algorithms have independent variables `X` and target/dependent variable(s) `y`. We split the data in `train` and `test` subsets; the `test` subset cannot be seen by the model during training.
+
+In time series, we cannot randomly split the dataset; we take the last 20% as the test subset.
+
+```python
+environment.columns
+# ['precipitation', 'wind-gust-speed', 'humidity', 'radiation', 'sunshine', 'wind-direction', 'wind-speed', 'pressure', 'temperature', 'target']
+
+environment.shape # (2972, 10)
+
+# Define the split day
+# limit_day = environment.index[int(environment.shape[0]*0.8)].date()
+limit_day = "2018-10-27"
+
+# Split the data
+train_env = environment[:limit_day]
+test_env = environment[limit_day:]
+
+# Print start and end dates
+print(show_start_end(train_env))
+print(show_start_end(test_env))
+
+# Split the data into X and y
+X_train = train_env.drop("target", axis=1)
+y_train = train_env["target"]
+X_test = test_env.drop("target", axis=1)
+y_test = test_env["target"]
+
+# Scale
+from sklearn.preprocessing import StandardScaler
+
+# Initialize StandardScaler
+sc = StandardScaler()
+
+# Fit the scaler
+sc.fit(X_train)
+
+# Transform the data
+X_train_s = sc.transform(X_train)
+X_test_s = sc.transform(X_test)
+X_train_s = pd.DataFrame(X_train_s, 
+                         columns=X_train.columns, 
+                         index=X_train.index)
+X_test_s = pd.DataFrame(X_test_s, 
+                        columns=X_test.columns, 
+                        index=X_test.index)
+
+# Import LogisticRegression
+from sklearn.linear_model import LogisticRegression
+
+# Initialize the model
+logreg = LogisticRegression()
+
+# Fit the model
+logreg.fit(X_train_s, y_train)
+
+# Predict classes
+print(logreg.predict(X_test_s))
+
+# Score the model
+print(logreg.score(X_train_s, y_train))
+print(logreg.score(X_test_s, y_test))
+```
+
+### 4.2 Develop Machine Learning Pipeline
 
