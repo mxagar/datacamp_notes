@@ -7,7 +7,9 @@ Datacamp is organized in single *courses* and *tracks*, which contain several si
 List of courses / tracks:
 
 - [Analyzing IoT Data in Python](https://app.datacamp.com/learn/courses/analyzing-iot-data-in-python): [`Course_IoT`](Course_IoT).
+<!--
 - [Data Engineer with Python](https://app.datacamp.com/learn/career-tracks/data-engineer-with-python): [`Track_DataEngineer`](Track_DataEngineer).
+-->
 
 Mikel Sagardia, 2023.  
 No guarantees.
