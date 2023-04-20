@@ -7,7 +7,7 @@ The course has 4 main sections:
 1. Classification
 2. Regression
 3. Fine-tuning XGBoost
-4. Using XGBoot in Pipelines
+4. Using XGBoost in Pipelines
 
 Note that:
 
@@ -34,6 +34,15 @@ Table of contents:
     - [2.4 Visualizing Trees](#24-visualizing-trees)
     - [2.5 Feature Importances](#25-feature-importances)
   - [3. Fine-Tuning XGBoost](#3-fine-tuning-xgboost)
+    - [3.1 Manual Hyperparameter Selection](#31-manual-hyperparameter-selection)
+      - [Example of Manual Parameter Selection](#example-of-manual-parameter-selection)
+      - [Effect of Varying a Hyperparameter: Number of Boosting Rounds](#effect-of-varying-a-hyperparameter-number-of-boosting-rounds)
+      - [Automated Selection with Early Stopping](#automated-selection-with-early-stopping)
+    - [3.2 Most Common Tunable Hyperparameters](#32-most-common-tunable-hyperparameters)
+      - [Example: Variation of the Learning Rate, Max Depth, Number of Features](#example-variation-of-the-learning-rate-max-depth-number-of-features)
+    - [3.3 Grid Search and Random Search](#33-grid-search-and-random-search)
+      - [Grid Search](#grid-search)
+      - [Random Search](#random-search)
 
 
 Mikel Sagardia, 2023.  
@@ -51,7 +60,9 @@ XGBoost is an implementation of the [Gradient Boosting](https://en.wikipedia.org
 - Best performance.
 - Parallelizable, on a computer and across the network. So it can work with huge datasets distributed on several nodes/GPUs.
 - We can use it for classification and regression.
-- The Python API is analog to the Scikit-Learn API, i.e., we have `fit()` and `predict()` methods.
+- The [Python API](https://xgboost.readthedocs.io/en/stable/python/python_api.html) is easy to use and has two major flavors or sub-APIs:
+  - The **Scikit-Learn API**: We instantiate `XGBRegressor()` or `XGBClassifier` and then we can `fit()` and `predict()`, using the typical Scikit-Learn parameters; we can even use those objects with other Scikit-Learn modules, such as `GridSearchCV`.
+  - The **Learning API**: The native XGBoost Python API requires to convert the dataframes into `DMatrix` objects first; then, we have powerful methods which allow for tuning many parameters: `xgb.cv()`, `xgb.train()`. The native/learning API is very easy to use. **Note: the parameter names are different compared to the Scikit-Learn API!**
 
 #### Example Snippet
 
@@ -67,7 +78,7 @@ X, y = class_data.iloc[:,:-1], class_data.iloc[:,-1].astype(int)
 X_train, X_test, y_train, y_test= train_test_split(X, y,
         test_size=0.2, random_state=123)
 
-# XGBoost Classifier instance
+# XGBoost Classifier instance: Scikit-Learn API
 # Parameters:
 # https://xgboost.readthedocs.io/en/stable/parameter.html
 # Objective functions:
@@ -123,9 +134,20 @@ Therefore, XGBoost is an **ensemble learning** method: many models are used to y
 - Weight each weak prediction based on learner's performance.
 - Combine weighted predictions to obtain a single prediction.
 
+The XGBoost implementation allows two weak learners:
+
+- The mentioned CART trees; these should be used in most cases, because they capture non-linearities.
+- Linear learners.
+
+Notes on the general boosting algorithm:
+
+- Each weak learner is created in a boosting round and it uses a subset of the total dataset.
+- If we use trees, we can select the number of features to be selected randomly to build the tree.
+- We can apply regularization is the model is overfitting.
+
 ### 1.3 Cross Validation
 
-We can use cross-validation with XGBoost, but the API usage is a bit different:
+We can use cross-validation with XGBoost, but the API usage is a bit different, i.e., we use the XGBoost native/learning API:
 
 - We need to define `DMatrix` objects.
 - We call `xgb.cv()`.
@@ -152,6 +174,7 @@ params = {"objective":"binary:logistic",
           "max_depth":4}
 
 # Fit with CV and get results of CV
+# XGBoost native/learning API
 # Parameters:
 # https://xgboost.readthedocs.io/en/stable/python/python_api.html#xgboost.cv
 cv_results = xgb.cv(dtrain=churn_dmatrix, # DMatrix
@@ -222,9 +245,21 @@ The ensemble model is a weighted sum of the weak learners; if we use the linear 
 
 Additionally, we can apply **regularization** to control the complexity of the model:
 
-- `gamma`: minimum loss reduction allowed for a split to occur (refers to trees, I understand).
-- `alpha`: L1 regularization on leaf weights, larger values mean more regularization (refers to linear models, I understand).
-- `lambda`: L2 regularization on leaf weights (refers to linear models, I understand).
+- `gamma`: minimum loss reduction allowed for a split to occur.
+- `alpha`: L1 regularization on (leaf) weights, larger values mean more regularization.
+- `lambda`: L2 regularization on (leaf) weights.
+
+Apparently, all these regularization parameters can be used with both base/weak learners; however, their interpretation is different in each case:
+
+1. Decision Trees (`"gbtree"` base learner):
+  - Gamma: Controls the minimum loss reduction required to make a split in a decision tree. A higher value of gamma makes the algorithm more conservative and reduces the number of splits.
+  - Alpha: L1 regularization parameter on leaf weights. A higher value of alpha makes the leaf weights closer to zero, resulting in a more sparse tree.
+  - Lambda: L2 regularization parameter on leaf weights. A higher value of lambda makes the leaf weights smaller, resulting in a smoother tree.
+
+2. Linear Models (`"gblinear"` base learner):
+  - Gamma: Controls the L1 regularization strength on the weights. A higher value of gamma results in more sparsity in the weight matrix.
+  - Alpha: L1 regularization parameter on the bias. A higher value of alpha makes the bias closer to zero, resulting in a more sparse model.
+  - Lambda: L2 regularization parameter on the weights. A higher value of lambda makes the weights smaller, resulting in a smoother model.
 
 ### 2.1 Non-Linear and Linear Weak Learners: Ames/Boston Housing Prediction
 
@@ -251,6 +286,7 @@ X_train, X_test, y_train, y_test= train_test_split(X,
                                                    test_size=0.2,
                                                    random_state=123)
 
+# Scikit-Learn API
 xg_reg = xgb.XGBRegressor(objective='reg:squarederror', # reg:linear
                           n_estimators=10,
                           seed=123)
@@ -265,7 +301,7 @@ print("RMSE: %f" % (rmse)) # 28106.463641
 
 #### 2.1.2 Linear Weak Learner
 
-If we want to use linear weak learners, we need to use the learning API, which is different:
+If we want to use linear weak learners, we need to use the learning or XGBoost native/learning API, which is different:
 
 - We need to define `DMatrix` objects.
 - We call `xgb.train()`.
@@ -278,6 +314,7 @@ If we want to use linear weak learners, we need to use the learning API, which i
 DM_train = xgb.DMatrix(data=X_train,label=y_train)
 DM_test =  xgb.DMatrix(data=X_test,label=y_test)
 
+# XGBoost native/learning API
 # Define params
 # The weak learner is defined with booster
 # In this case, we use a linear base learner!
@@ -311,6 +348,7 @@ housing_dmatrix = xgb.DMatrix(data=X, label=y)
 # Create the parameter dictionary: params
 params = {"objective":"reg:squarederror", "max_depth":4}
 
+# XGBoost native/learning API
 # Perform cross-validation: cv_results
 cv_results = xgb.cv(dtrain=housing_dmatrix,
                     params=params,
@@ -331,9 +369,21 @@ print((cv_results["test-rmse-mean"]).tail(1))
 
 Recall that we can apply **regularization** to control the complexity of the model:
 
-- `gamma`: minimum loss reduction allowed for a split to occur (refers to trees, I understand).
-- `alpha`: L1 regularization on leaf weights, larger values mean more regularization (refers to linear models, I understand).
-- `lambda`: L2 regularization on leaf weights (refers to linear models, I understand).
+- `gamma`: minimum loss reduction allowed for a split to occur.
+- `alpha`: L1 regularization on (leaf) weights, larger values mean more regularization.
+- `lambda`: L2 regularization on (leaf) weights.
+
+Apparently, all these regularization parameters can be used with both base/weak learners; however, their interpretation is different in each case:
+
+1. Decision Trees (`"gbtree"` base learner):
+  - Gamma: Controls the minimum loss reduction required to make a split in a decision tree. A higher value of gamma makes the algorithm more conservative and reduces the number of splits.
+  - Alpha: L1 regularization parameter on leaf weights. A higher value of alpha makes the leaf weights closer to zero, resulting in a more sparse tree.
+  - Lambda: L2 regularization parameter on leaf weights. A higher value of lambda makes the leaf weights smaller, resulting in a smoother tree.
+
+2. Linear Models (`"gblinear"` base learner):
+  - Gamma: Controls the L1 regularization strength on the weights. A higher value of gamma results in more sparsity in the weight matrix.
+  - Alpha: L1 regularization parameter on the bias. A higher value of alpha makes the bias closer to zero, resulting in a more sparse model.
+  - Lambda: L2 regularization parameter on the weights. A higher value of lambda makes the weights smaller, resulting in a smoother model.
 
 ```python
 import xgboost as xgb
@@ -437,3 +487,234 @@ plt.show()
 
 ## 3. Fine-Tuning XGBoost
 
+### 3.1 Manual Hyperparameter Selection
+
+Manual or systematic parameter tuning can significantly improve the results, but it can be also time consuming. So we need to choose according to the application.
+
+In general, XGBoost hyperparameters are modifiable via the `params` dictionary and we should use the `cv()` or `train()` API. Also, note that the parameters in those APIs are also hyperparameters! Especially, the `num_boost_round` value, which specifies the number of weak learners or boosting rounds is essential.
+
+#### Example of Manual Parameter Selection
+
+```python
+import pandas as pd
+import xgboost as xgb
+import numpy as np
+
+housing_data = pd.read_csv("../data/ames_housing_trimmed_processed.csv")
+X = housing_data[housing_data.columns.tolist()[:-1]]
+y = housing_data[housing_data.columns.tolist()[-1]]
+housing_dmatrix = xgb.DMatrix(data=X,label=y)
+
+# Manually set paramater values (not default ones)
+params = {"objective":"reg:squarederror",
+          'colsample_bytree': 0.3,
+          'learning_rate': 0.1,
+          'max_depth': 5}
+cv_results_rmse = xgb.cv(dtrain=housing_dmatrix,
+                         params=params,
+                         nfold=4,
+                         num_boost_round=200, # THIS IS ALSO A PARAM!
+                         metrics="rmse",
+                         as_pandas=True,
+                         seed=123)
+
+print("Tuned rmse: %f" %((tuned_cv_results_rmse["test-rmse-mean"]).tail(1))) # 30370
+```
+
+#### Effect of Varying a Hyperparameter: Number of Boosting Rounds
+
+In this example, we try different number of boosting rounds, i.e., `num_boost_round`; these denote the number of weak learners under the hood. Note that we can use a loop with any kind of hyperparameter.
+
+```python
+# Create list of number of boosting rounds
+num_rounds = [150, 200, 250]
+
+# Empty list to store final round rmse per XGBoost model
+final_rmse_per_round = []
+
+# Iterate over num_rounds and build one model per num_boost_round parameter
+for curr_num_rounds in num_rounds:
+
+    # Perform cross-validation: cv_results
+    cv_results = xgb.cv(dtrain=housing_dmatrix,
+                        params=params,
+                        nfold=3,
+                        num_boost_round=curr_num_rounds, # Several values tried in loop
+                        metrics="rmse",
+                        as_pandas=True,
+                        seed=123)
+    
+    # Append final round RMSE
+    final_rmse_per_round.append(cv_results["test-rmse-mean"].tail().values[-1])
+
+# Print the resultant DataFrame
+num_rounds_rmses = list(zip(num_rounds, final_rmse_per_round))
+print(pd.DataFrame(num_rounds_rmses,columns=["num_boosting_rounds","rmse"]))
+#    num_boosting_rounds          rmse
+# 0                  150  29763.123698
+# 1                  200  29634.996745
+# 2                  250  29639.554036
+```
+
+#### Automated Selection with Early Stopping
+
+We can activate activate early stopping with `early_stopping_rounds`: boosting rounds can be stopped before completing the total number of boosting rounds given with `num_boost_round`. The validation metric needs to improve at least once in every `early_stopping_rounds` round(s) to avoid stopping.
+
+```python
+# Create the parameter dictionary for each tree: params
+params = {"objective":"reg:squarederror", "max_depth":4}
+
+# Perform cross-validation with early stopping: cv_results
+cv_results = xgb.cv(dtrain=housing_dmatrix,
+                         params=params,
+                         nfold=3,
+                         num_boost_round=50,
+                         early_stopping_rounds=10,
+                         metrics="rmse",
+                         as_pandas=True,
+                         seed=123)
+
+# Print cv_results
+# We see the results for each boosting round
+print(cv_results)
+#     train-rmse-mean  train-rmse-std  test-rmse-mean  test-rmse-std
+# 0     141871.635417      403.636200   142640.651042     705.559164
+# 1     103057.036458       73.769561   104907.664062     111.112417
+# ...
+```
+
+### 3.2 Most Common Tunable Hyperparameters
+
+**IMPORTANT**: Have a look at the [Python API](https://xgboost.readthedocs.io/en/stable/python/python_api.html) to see all the parameters for any API (i.e., Scikit-Learn or Learning). In the following, the most common parameters are listed.
+
+Tree weak learner:
+
+- `eta` or `learning_rate`: how quickly we fit the residual error. High values lead to quicker fits.
+- `gamma`: min loss reduction to create new tree split. Higher value, less splits, less complexity, less overfitting.
+- `lambda`: L2 reg on leaf weights. Higher value, less complexity.
+- `alpha`: L1 reg on leaf weights. Higher value, less complexity.
+- `max_depth`: max depth per tree; how deep each tree is allowed to grow in each round. Higher value, **more** complexity.
+- `subsample`: fraction of total samples used per tree; in each boosting round, a tree takes one subset of all data points, this value refers to the size of this subset. Higher value, **more** complexity. 
+- `colsample_bytree`: fraction of features used per each tree or boosting round. Not all features need to be used by each weak learner or boosting round. This value refers to how many from the total amount are used, selected randomly. A low value of this parameter is like more regularization.
+
+Linear weak learner (much less hyperparameters):
+
+- `lambda`: L2 reg on weights. Higher value, less complexity.
+- `alpha`: L1 reg on weights. Higher value, less complexity.
+- `lambda_bias`: L2 reg term on bias. Higher value, less complexity.
+
+For any type base/weak learner, recall that we can tune the number of boostings or weak learners we want in the `cv()` or `train()` call:
+
+- `num_boost_round`
+- `early_stopping_rounds`
+
+#### Example: Variation of the Learning Rate, Max Depth, Number of Features
+
+```python
+# Create your housing DMatrix: housing_dmatrix
+housing_dmatrix = xgb.DMatrix(data=X, label=y)
+
+# Create the parameter dictionary for each tree (boosting round)
+params = {"objective":"reg:squarederror", "max_depth":3}
+
+# Create list of eta values and empty list to store final round rmse per xgboost model
+vals = [0.001, 0.01, 0.1] # eta
+#vals = [2, 5, 10, 20] # max_depth
+#vals = [0.1, 0.5, 0.8, 1] # colsample_bytree
+best_rmse = []
+
+# Systematically vary the eta 
+for curr_val in vals:
+
+    params["eta"] = curr_val
+    #params["max_depth"] = curr_val
+    #params["colsample_bytree"] = curr_val
+    
+    # Perform cross-validation: cv_results
+    cv_results = xgb.cv(dtrain=housing_dmatrix,
+                         params=params,
+                         nfold=3,
+                         num_boost_round=10,
+                         early_stopping_rounds=5,
+                         metrics="rmse",
+                         as_pandas=True,
+                         seed=123)
+
+    # Append the final round rmse to best_rmse
+    best_rmse.append(cv_results["test-rmse-mean"].tail().values[-1])
+
+# Print the resultant DataFrame
+print(pd.DataFrame(list(zip(eta_vals, best_rmse)), columns=["eta","best_rmse"]))
+#      eta      best_rmse
+# 0  0.001  195736.411458
+# 1  0.010  179932.192708
+# 2  0.100   79759.411458
+```
+
+### 3.3 Grid Search and Random Search
+
+We can use `GridSearchCV` and `RandomSearchCV` from Scikit-Learn to systematically obtain the best parameters. To that end, we need to use the Scikit-Learn API, i.e., we instantiate `XGBRegressor` or `XGBClassifier` and user the parameters typical from Scikit-Learn. Note that the parameter seach space increases exponentially as we add parameters, so:
+
+- With `GridSearchCV` we might require much more time to find the optimum parameter set.
+- With `RandomSearchCV` we limit the number of sets, but these are random!
+
+There are more advanced techniques for hyperparameter tuning, such as [Bayesian hyperparameter optimization](https://machinelearningmastery.com/scikit-optimize-for-hyperparameter-tuning-in-machine-learning/).
+
+#### Grid Search
+
+```python
+import pandas as pd
+import xgboost as xgb
+import numpy as np
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+
+housing_data = pd.read_csv("../data/ames_housing_trimmed_processed.csv")
+X = housing_data[housing_data.columns.tolist()[:-1]]
+y = housing_data[housing_data.columns.tolist()[-1]]
+housing_dmatrix = xgb.DMatrix(data=X,label=y)
+
+# The parameter names with the Scikit-Learn API are different
+# eta -> learning_rate
+# num_boost_round -> n_estimators
+gbm_param_grid = {'learning_rate': [0.01,0.1,0.5,0.9],
+                  'n_estimators': [200],
+                  'subsample': [0.3, 0.5, 0.9]}
+
+gbm = xgb.XGBRegressor()
+grid_mse = GridSearchCV(estimator=gbm,
+                        param_grid=gbm_param_grid,
+                        scoring='neg_mean_squared_error', # negative MSE
+                        cv=4,
+                        verbose=1)
+
+grid_mse.fit(X, y)
+
+print("Best parameters found: ", grid_mse.best_params_)
+# Since we have the negative MSE, we need to compute the RMSE from it
+print("Lowest RMSE found: ", np.sqrt(np.abs(grid_mse.best_score_)))
+```
+
+#### Random Search
+
+We define the possible hyperparameter values but unlike in the grid search, here we define a number of possible combinations to be tested. Then, for each trial, the hyperparameter values are chosen randomly.
+
+```python
+# All possible combinations are: 20 * 1 * 20 = 400
+# BUT: we limit to n_iter=25 the number of combinations
+# And we will train each of them 4-fold with CV
+gbm_param_grid = {'learning_rate': np.arange(0.05,1.05,.05), # arange: 20 values
+                  'n_estimators': [200],
+                  'subsample': np.arange(0.05,1.05,.05)} # arange: 20 values
+
+gbm = xgb.XGBRegressor()
+randomized_mse = RandomizedSearchCV(estimator=gbm,
+                                    param_distributions=gbm_param_grid,
+                                    n_iter=25, # number of combinations
+                                    scoring='neg_mean_squared_error',
+                                    cv=4,
+                                    verbose=1)
+
+randomized_mse.fit(X, y)
+print("Best parameters found: ",randomized_mse.best_params_)
+print("Lowest RMSE found: ", np.sqrt(np.abs(randomized_mse.best_score_)))
+```
