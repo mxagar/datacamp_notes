@@ -43,6 +43,11 @@ Table of contents:
     - [3.3 Grid Search and Random Search](#33-grid-search-and-random-search)
       - [Grid Search](#grid-search)
       - [Random Search](#random-search)
+  - [4. Using XGBoost in Pipelines](#4-using-xgboost-in-pipelines)
+    - [4.1 Example of Pipelines](#41-example-of-pipelines)
+    - [4.2 Data Processing in Pipelines](#42-data-processing-in-pipelines)
+    - [4.3 Full Pipeline Example: Kidney Disease Dataset](#43-full-pipeline-example-kidney-disease-dataset)
+    - [4.4 Housing Pipeline with Random Search Cross-Validation](#44-housing-pipeline-with-random-search-cross-validation)
 
 
 Mikel Sagardia, 2023.  
@@ -717,4 +722,339 @@ randomized_mse = RandomizedSearchCV(estimator=gbm,
 randomized_mse.fit(X, y)
 print("Best parameters found: ",randomized_mse.best_params_)
 print("Lowest RMSE found: ", np.sqrt(np.abs(randomized_mse.best_score_)))
+```
+
+## 4. Using XGBoost in Pipelines
+
+This section is not that relevant: it is not that XGBoost specific, just a generic section on how to build `Pipeline` objects, but using XGBoost models. The main message is that we need to use the Scikit-Learn API to be able to build `Pipelines`.
+
+### 4.1 Example of Pipelines
+
+```python
+import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import cross_val_score
+
+data = pd.read_csv("../data/ames_housing_trimmed_processed.csv")
+X = data.iloc[:,:-1]
+y = data.iloc[:,-1]
+
+rf_pipeline = Pipeline([("st_scaler", StandardScaler()),
+                        ("rf_model", RandomForestRegressor())])
+
+scores = cross_val_score(rf_pipeline,
+                         X,
+                         y,
+                         scoring="neg_mean_squared_error",
+                         cv=10)
+```
+
+### 4.2 Data Processing in Pipelines
+
+```python
+df = pd.read_csv("../data/ames_unprocessed_data.csv")
+
+# There are some NAs
+df.isna().sum()
+
+### -- Categoricals: LabelEncoder
+
+# Import LabelEncoder
+from sklearn.preprocessing import LabelEncoder
+
+# Fill missing values with 0
+df.LotFrontage = df.LotFrontage.fillna(0)
+
+# Create a boolean mask for categorical columns
+categorical_mask = (df.dtypes == "object")
+
+# Get list of categorical column names
+categorical_columns = df.columns[categorical_mask].tolist()
+
+# Print the head of the categorical columns
+print(df[categorical_columns].head())
+
+# Create LabelEncoder object: le
+le = LabelEncoder()
+
+# Apply LabelEncoder to categorical columns
+df[categorical_columns] = df[categorical_columns].apply(lambda x: le.fit_transform(x))
+
+# Print the head of the LabelEncoded categorical columns
+print(df[categorical_columns].head())
+
+### -- Categoricals: OneHotEncoder
+
+# Import OneHotEncoder
+from sklearn.preprocessing import OneHotEncoder
+
+# Create OneHotEncoder: ohe
+ohe = OneHotEncoder(sparse=False)
+
+# Apply OneHotEncoder to categorical columns - output is no longer a dataframe: df_encoded
+df_encoded = ohe.fit_transform(df)
+
+# Print first 5 rows of the resulting dataset - again, this will no longer be a pandas dataframe
+print(df_encoded[:5, :])
+
+# Print the shape of the original DataFrame
+print(df.shape)
+
+# Print the shape of the transformed array
+print(df_encoded.shape)
+
+### -- Categoricals: DictVectorizer
+
+# Import DictVectorizer
+from sklearn.feature_extraction import DictVectorizer
+
+# Convert df into a dictionary: df_dict
+# Each row becomes a dictionary with key = col name and value = cell value
+# All dictionaries/rows are inside a list
+df_dict = df.to_dict(orient="records")
+
+# Create the DictVectorizer object: dv
+dv = DictVectorizer(sparse=False)
+
+# Apply dv on df: df_encoded
+df_encoded = dv.fit_transform(df_dict)
+
+# Print the resulting first five rows
+print(df_encoded[:5,:])
+
+# Print the vocabulary
+# NOTE: the order of the columns is not preserved!
+# The dv.vocabulary_ maps the column index of df_encoded to a column name
+# but the original order is not preserved.
+# Thus, the df_encoded matrix is compliant with dv.vocabulary_ but the column
+# order is new.
+print(dv.vocabulary_)
+
+### -- Pipeline
+
+# Here, everything is done in a pipeline. Note that we need to use the Scikit-Learn API in order to pack the XGBoost models intoa pipeline.
+
+import xgboost as xgb
+
+df = pd.read_csv("../data/ames_housing_trimmed_processed.csv")
+X = data.iloc[:,:-1]
+y = data.iloc[:,-1]
+
+# Fill LotFrontage missing values with 0
+X.LotFrontage = X.LotFrontage.fillna(0)
+
+# Setup the pipeline steps: steps
+steps = [("ohe_onestep", DictVectorizer(sparse=False)),
+         ("xgb_model", xgb.XGBRegressor())]
+
+# Create the pipeline: xgb_pipeline
+xgb_pipeline = Pipeline(steps)
+
+# Fit the pipeline
+xgb_pipeline.fit(X.to_dict("records"), y)
+
+### -- Cross-Validation
+
+import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.feature_extraction import DictVectorizer
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import cross_val_score
+import xgboost as xgb
+
+df = pd.read_csv("../data/ames_housing_trimmed_processed.csv")
+X = df.iloc[:,:-1]
+y = df.iloc[:,-1]
+
+# Fill LotFrontage missing values with 0
+X.LotFrontage = X.LotFrontage.fillna(0)
+
+# Setup the pipeline steps: steps
+steps = [("ohe_onestep", DictVectorizer(sparse=False)),
+         ("xgb_model", xgb.XGBRegressor(max_depth=2, objective="reg:squarederror"))]
+
+# Create the pipeline: xgb_pipeline
+xgb_pipeline = Pipeline(steps)
+
+# Cross-validate the model
+cross_val_scores = cross_val_score(xgb_pipeline,
+                         X.to_dict("records"),
+                         y,
+                         cv=10,
+                         scoring="neg_mean_squared_error")
+
+# Print the 10-fold RMSE
+print("10-fold RMSE: ", np.mean(np.sqrt(np.abs(cross_val_scores))))
+```
+
+### 4.3 Full Pipeline Example: Kidney Disease Dataset
+
+We need to use the Scikit-Learn API in order to pack the XGBoost models intoa pipeline.
+
+In this section, the [chronic kidney disease dataset](https://archive.ics.uci.edu/ml/datasets/chronic_kidney_disease) is used, which requirems more data processing.
+
+From the dataset web:
+
+```
+1.Age(numerical) 
+age in years 
+2.Blood Pressure(numerical) 
+bp in mm/Hg 
+3.Specific Gravity(nominal) 
+sg - (1.005,1.010,1.015,1.020,1.025) 
+4.Albumin(nominal) 
+al - (0,1,2,3,4,5) import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.feature_extraction import DictVectorizer
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import cross_val_score
+import xgboost as xgb
+5.Sugar(nominal) 
+su - (0,1,2,3,4,5) 
+6.Red Blood Cells(nominal) 
+rbc - (normal,abnormal) 
+7.Pus Cell (nominal) 
+pc - (normal,abnormal) 
+8.Pus Cell clumps(nominal) 
+pcc - (present,notpresent) 
+9.Bacteria(nominal) 
+ba - (present,notpresent) 
+10.Blood Glucose Random(numerical) 
+bgr in mgs/dl 
+11.Blood Urea(numerical) 
+bu in mgs/dl 
+12.Serum Creatinine(numerical) 
+sc in mgs/dl 
+13.Sodium(numerical) 
+sod in mEq/L 
+14.Potassium(numerical) 
+pot in mEq/L 
+15.Hemoglobin(numerical) 
+hemo in gms 
+16.Packed Cell Volume(numerical) 
+17.White Blood Cell Count(numerical) 
+wc in cells/cumm 
+18.Red Blood Cell Count(numerical) 
+rc in millions/cmm 
+19.Hypertension(nominal) 
+htn - (yes,no) 
+20.Diabetes Mellitus(nominal) 
+dm - (yes,no) 
+21.Coronary Artery Disease(nominal) 
+cad - (yes,no) 
+22.Appetite(nominal) 
+appet - (good,poor) 
+23.Pedal Edema(nominal) 
+pe - (yes,no) 
+24.Anemia(nominal) 
+ane - (yes,no) 
+25.Class (nominal) 
+class - (ckd,notckd)
+```
+
+```python
+# Import necessary modules
+import pandas as pd
+import numpy as np
+from sklearn.feature_extraction import DictVectorizer
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import cross_val_score
+import xgboost as xgb
+from sklearn_pandas import DataFrameMapper
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import FeatureUnion
+from sklearn import preprocessing
+from sklearn.feature_extraction import DictVectorizer
+#from sklearn.preprocessing import FunctionTransformer
+from sklearn.base import BaseEstimator, TransformerMixin
+
+column_names = ['age', 'bp', 'sg', 'al', 'su', 'bgr', 'bu', 'sc', 'sod', 'pot', 'hemo', 'pcv', 'wc', 'rc', 'rbc', 'pc', 'pcc', 'ba', 'htn', 'dm', 'cad', 'appet', 'pe', 'ane', 'class']
+# The CSV has no column names, but I got them from the web/Datacamp
+# Also, note that NaN values are marked with a ?
+df = pd.read_csv("../data/chronic_kidney_disease.csv", names=column_names, na_values='?')
+
+df.shape # (400, 25)
+
+# Extract features and target
+X = df.iloc[:,:-1]
+y = df.iloc[:,-1]
+
+# Check number of nulls in each feature column
+nulls_per_column = X.isnull().sum()
+print(nulls_per_column)
+
+# Create a boolean mask for categorical columns
+categorical_feature_mask = X.dtypes == object
+
+# Get list of categorical column names
+categorical_columns = X.columns[categorical_feature_mask].tolist()
+
+# Get list of non-categorical column names
+non_categorical_columns = X.columns[~categorical_feature_mask].tolist()
+
+# Apply numeric imputer
+numeric_imputation_mapper = DataFrameMapper(
+                                            [([numeric_feature], SimpleImputer(strategy="median")) for numeric_feature in non_categorical_columns],
+                                            input_df=True,
+                                            df_out=True
+                                           )
+
+# Apply categorical imputer
+categorical_imputation_mapper = DataFrameMapper(
+                                                [([category_feature], SimpleImputer(strategy="most_frequent")) for category_feature in categorical_columns],
+                                                input_df=True,
+                                                df_out=True
+                                               )
+
+# Transform labels
+le = preprocessing.LabelEncoder()
+y = le.fit_transform(y).astype("int")
+
+cross_val_scores = cross_val_score(pipeline,
+                         X,
+                         y,
+                         scoring="roc_auc",
+                         cv=10)
+```
+
+### 4.4 Housing Pipeline with Random Search Cross-Validation
+
+```python
+import pandas as pd
+import xgboost as xgb
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import RandomizedSearchCV
+
+data = pd.read_csv("../data/ames_housing_trimmed_processed.csv")
+X = data.iloc[:,:-1]
+y = data.iloc[:,-1]
+
+data.shape # (1460, 57)
+
+xgb_pipeline = Pipeline([("st_scaler", StandardScaler()),
+                         ("xgb_model", xgb.XGBRegressor())])
+gbm_param_grid = {
+    'xgb_model__subsample': np.arange(.05, 1, .05),
+    'xgb_model__max_depth': np.arange(3,20,1),
+    'xgb_model__colsample_bytree': np.arange(.1,1.05,.05) }
+
+randomized_neg_mse = RandomizedSearchCV(estimator=xgb_pipeline,
+                                        param_distributions=gbm_param_grid, 
+                                        n_iter=10,
+                                        scoring='neg_mean_squared_error', cv=4)
+
+randomized_neg_mse.fit(X, y)
+
+print("Best rmse: ", np.sqrt(np.abs(randomized_neg_mse.best_score_)))
+
+print("Best model: ", randomized_neg_mse.best_estimator_)
 ```
