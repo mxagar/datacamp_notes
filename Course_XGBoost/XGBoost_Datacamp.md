@@ -148,7 +148,7 @@ Notes on the general boosting algorithm:
 
 - Each weak learner is created in a boosting round and it uses a subset of the total dataset.
 - If we use trees, we can select the number of features to be selected randomly to build the tree.
-- We can apply regularization is the model is overfitting.
+- We can apply regularization if the model is overfitting.
 
 ### 1.3 Cross Validation
 
